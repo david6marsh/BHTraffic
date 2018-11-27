@@ -401,7 +401,7 @@ obs1t_v <- obs1t %>%
 
 ```
 
-So now we can do a variety of chord diagrams.
+So now we can do a variety of chord diagrams. Indeed, we can do one that shows all 3 main types together, as different colours.
 
 ```{r vehicle type chords}
 min_t <- 45
@@ -417,6 +417,15 @@ title(paste0("Light commercial vehicle \ntransits of Bath (<= ",min_t," mins)"))
 z <- trChord(obs1t_v %>% filter(type=="HCVs") ,
               eneBase, min_t)
 title(paste0("Heavy commercial vehicle \ntransits of Bath (<= ",min_t," mins)"))
+
+z <- trChord(obs1t_v, eneBase, min_t, by_type=T, invisible_type = c())
+title(paste0("Vehicle transits of Bath (<= ",min_t," mins)\nBy vehicle type"))
+
+#hiding cars
+z <- trChord(obs1t_v, eneBase, min_t, by_type=T, invisible_type = c("CARS"),
+             colours = c("white", "skyblue3", "navyblue", "grey"))
+title(paste0("Vehicle transits of Bath (<= ",min_t," mins)\nBy vehicle type"))
+
 ```
 
 

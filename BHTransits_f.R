@@ -18,10 +18,13 @@ getTransitIDs <- function(ioseq){
 
 trChord <- function(x, ene = eneBase, max_time = 30,
                     by_type = FALSE,
-                    invisible_type = c()){
+                    invisible_type = c(),
+                    colours = c("green", "skyblue3", "navyblue", "grey"),
+                    transp = 0.5){
   # draw chord with with this time limit
   # if by_type, draw a separate chord per type
   # and make types in the list invisible
+  # the transp is used to align transparency in chord diagram and legend
   
   # add dummy type if needed
   if (!by_type) {x$type = "ALL"}
@@ -58,10 +61,10 @@ trChord <- function(x, ene = eneBase, max_time = 30,
       group_by(entry, exit, type) %>% 
       summarise(n = n()) %>% 
       mutate( type_col = case_when(
-        type == "CARS" ~ "green",
-        type == "LCVs" ~ "skyblue2",
-        type == "HCVs" ~ "navyblue",
-        TRUE ~ "grey"),
+        type == "CARS" ~ colours[1],
+        type == "LCVs" ~ colours[2],
+        type == "HCVs" ~ colours[3],
+        TRUE ~ colours[4]),
         type_vis = if_else(type %in% invisible_type, FALSE, TRUE)
       )
     #must still only pass 3 columns to chordDiagram
@@ -70,8 +73,12 @@ trChord <- function(x, ene = eneBase, max_time = 30,
                        link.visible = transf$type_vis,
                        order = c("Bathampton","South", "West", "Lansdown", "Swainswick", "East"),
                        directional = 1, direction.type = "arrows", link.arr.type = "big.arrow",
-                       # link.lty = lty_df, link.lwd = lwd_df, link.border = bord_df,
-                       grid.col = grid_col)}
+                       grid.col = grid_col,
+                       transparency = transp)
+    legend(x = "bottomleft", inset = 0.05, bty = "n",
+           legend = c("CARS", "LCVs", "HCVs", "Other"),
+           fill = add_transparency(colours, transp),
+           border = "white")}
   else {
     transf <- transits %>% 
       group_by(entry, exit) %>% 
@@ -87,3 +94,7 @@ trChord <- function(x, ene = eneBase, max_time = 30,
   
   return(cd)
 }
+
+
+#take list of colour names
+#return list with given transparency
