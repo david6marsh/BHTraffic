@@ -20,6 +20,8 @@ library(circlize)
 library(purrr)
 
 library(networkD3)
+
+source("BHTransits_f.R")
 ```
 
 
@@ -101,20 +103,6 @@ We look through the ins and outs for each vehicle, and label the individual tran
 
 ```{r get valid transits}
 
-getTransitIDs <- function(ioseq){
-  #ioseq is a vector, a subset from obs1$in_out
-  #start a new transit ID at each instance of a 1
-  tid <- data.frame(io = ioseq) %>% 
-    mutate(rnum = 1:length(io),
-           tid = ifelse(io == 2, NA_integer_, rnum),
-           #rank the 1s and fill down
-           tid2 = dense_rank(tid)) %>% 
-    fill(tid2)
-    return(tid$tid2)
-  #still need to throw away any transits with 1 element, and just keep the first two
-  #(in case of repeated 2s)
-}
-
 # test_veh <- obs1 %>% 
 #   sample_n(10000) %>% #first downsample
 #   select(vehicle_id) %>% 
@@ -153,52 +141,9 @@ Using these valid transits, we generate some chord plots using `circlize`.
 
 ```{r chord plot}
 
-trChord <- function(x, ene = eneBase, max_time = 30){
-  # draw chord with with this time limit
-  
-  #remove the single observations or long transits from the data
-  #and group into transits
-  obs1v <- x %>% 
-    anti_join(ene %>% filter(n==1 || ttime > max_time),
-              by = c("vehicle_id", "transitID")) %>% 
-    group_by(vehicle_id, transitID)
-  
-  #calculate global, grouped frequencies
-  transits <- obs1v %>%
-    mutate(entry_time = first(time),
-           # resplit group1 North
-           group1 = if_else(group1=="North", description, group1)) %>% 
-    select(vehicle_id, transitID, entry_time, in_out, group1) %>% 
-    spread(in_out, group1, sep="") %>% 
-    rename( entry = in_out1, exit = in_out2) 
-  
-  transf <- transits %>% 
-    group_by(entry, exit) %>% 
-    summarise(n = n())
-  
-  #for chord diagram select the Bathampton - North, and set line type and width
-  lty_df <- data.frame(c("Bathampton", "Swainswick"), c("Swainswick", "Bathampton"), c(1,1))
-  lwd_df <- data.frame(c("Bathampton", "Swainswick"), c("Swainswick", "Bathampton"), c(1,1))
-  bord_df <- data.frame(c("Bathampton", "Swainswick"), c("Swainswick", "Bathampton"), c(1,1))
-  
-  grid_col <- c(Swainswick = "brown4", East = "sienna2", Bathampton = "red", Lansdown = "skyblue2",
-                West = "navyblue", South = "royalblue2")
-  
-  circos.par(start.degree = -20,
-             gap.after = c(10,2,2,10,2,2))
-  cd <- chordDiagram(transf,
-               order = c("Bathampton","South", "West", "Lansdown", "Swainswick", "East"),
-               directional = 1, direction.type = "arrows", link.arr.type = "big.arrow",
-               link.lty = lty_df, link.lwd = lwd_df, link.border = bord_df,
-               grid.col = grid_col)
-  circos.clear()  
-  
-  return(cd)
-}
-
 
 # layout(matrix(1:2, 1, 2))
-z <- trChord(obs1t , eneBase, 30)
+z <- trChord(obs1t, eneBase, 30)
 title("Transits of Bath within 30 Minutes")
 # (z <- trChord(obs1t, eneBase, 60))
 # title("Transits of Bath within 60 Minutes")
@@ -472,5 +417,14 @@ title(paste0("Light commercial vehicle \ntransits of Bath (<= ",min_t," mins)"))
 z <- trChord(obs1t_v %>% filter(type=="HCVs") ,
               eneBase, min_t)
 title(paste0("Heavy commercial vehicle \ntransits of Bath (<= ",min_t," mins)"))
+```
+
+
+In theory it is possible to have multiple links per pair, with different colours. So the colours could be used to show the type of vehicle.
+
+```{r multi-type chord diagram}
+
+
+
 ```
 
