@@ -431,3 +431,42 @@ sankeyNetwork(Links = slink_main, Nodes = snode %>% select(sloc, group1) %>% dis
 
 ```
 
+** Types of Vehicle
+
+This Sankey diagram shows the overall traffic patterns that I'm most interested in. There will be other flows across the toll bridge, such as locals from Bathampton or Batheaston who then aren't recorded by the ANPRs. Not much I can do about that for the moment.
+
+The questions I'd like to tackle are when the vehicles travel, and what sort they are. Here we focus on the type of vehicle. I think the coding is 'TAXIS', 'SPVs' special purpose vehicles, "PSVs" public service vehicles, "LCVs" light commercial vehicles, "HCVs" heavy commercial vehicles, "2/3 Wheelers", and blank.
+
+
+```{r first look at the vehicle types}
+veh <- read.csv("Data/banes_anpr_data/vehicles.csv", stringsAsFactors = F) 
+
+ggplot(veh, aes(type)) + geom_bar() +
+  coord_flip()
+  
+obs1t_v <- obs1t %>% 
+  left_join(veh %>% select(id, type) %>% distinct(), 
+            by= c("vehicle_id" = "id"))
+
+
+
+```
+
+So now we can do a variety of chord diagrams.
+
+```{r vehicle type chords}
+min_t <- 30
+
+(z <- trChord(obs1t_v %>% filter(type=="CARS") ,
+              eneBase, min_t))
+title(paste0("Car transits \nof Bath (<= ",min_t," mins)"))
+
+(z <- trChord(obs1t_v %>% filter(type=="LCVs") ,
+              eneBase, min_t))
+title(paste0("Light commercial vehicle \ntransits of Bath (<= ",min_t," mins)"))
+
+(z <- trChord(obs1t_v %>% filter(type=="HCVs") ,
+              eneBase, min_t))
+title(paste0("Heavy commercial vehicle \ntransits of Bath (<= ",min_t," mins)"))
+```
+
