@@ -181,12 +181,16 @@ trChord <- function(x, ene = eneBase, max_time = 30){
   lwd_df <- data.frame(c("Bathampton", "Swainswick"), c("Swainswick", "Bathampton"), c(1,1))
   bord_df <- data.frame(c("Bathampton", "Swainswick"), c("Swainswick", "Bathampton"), c(1,1))
   
+  grid_col <- c(Swainswick = "brown4", East = "sienna2", Bathampton = "red", Lansdown = "skyblue2",
+                West = "navyblue", South = "royalblue2")
+  
   circos.par(start.degree = -20,
              gap.after = c(10,2,2,10,2,2))
   cd <- chordDiagram(transf,
                order = c("Bathampton","South", "West", "Lansdown", "Swainswick", "East"),
                directional = 1, direction.type = "arrows", link.arr.type = "big.arrow",
-               link.lty = lty_df, link.lwd = lwd_df, link.border = bord_df)
+               link.lty = lty_df, link.lwd = lwd_df, link.border = bord_df,
+               grid.col = grid_col)
   circos.clear()  
   
   return(cd)
@@ -194,7 +198,7 @@ trChord <- function(x, ene = eneBase, max_time = 30){
 
 
 # layout(matrix(1:2, 1, 2))
-(z <- trChord(obs1t, eneBase, 30))
+z <- trChord(obs1t , eneBase, 30)
 title("Transits of Bath within 30 Minutes")
 # (z <- trChord(obs1t, eneBase, 60))
 # title("Transits of Bath within 60 Minutes")
@@ -455,18 +459,18 @@ obs1t_v <- obs1t %>%
 So now we can do a variety of chord diagrams.
 
 ```{r vehicle type chords}
-min_t <- 30
+min_t <- 45
 
-(z <- trChord(obs1t_v %>% filter(type=="CARS") ,
-              eneBase, min_t))
+z <- trChord(obs1t_v %>% filter(type=="CARS") ,
+              eneBase, min_t)
 title(paste0("Car transits \nof Bath (<= ",min_t," mins)"))
 
-(z <- trChord(obs1t_v %>% filter(type=="LCVs") ,
-              eneBase, min_t))
+z <- trChord(obs1t_v %>% filter(type=="LCVs") ,
+              eneBase, min_t)
 title(paste0("Light commercial vehicle \ntransits of Bath (<= ",min_t," mins)"))
 
-(z <- trChord(obs1t_v %>% filter(type=="HCVs") ,
-              eneBase, min_t))
+z <- trChord(obs1t_v %>% filter(type=="HCVs") ,
+              eneBase, min_t)
 title(paste0("Heavy commercial vehicle \ntransits of Bath (<= ",min_t," mins)"))
 ```
 
