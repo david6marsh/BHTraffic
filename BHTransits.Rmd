@@ -20,6 +20,8 @@ library(circlize)
 library(purrr)
 
 library(networkD3)
+library(htmlwidgets)
+library(htmltools)
 
 source("BHTransits_f.R")
 ```
@@ -377,6 +379,30 @@ title(paste0("Vehicle transits of Bath (<= ",min_t," mins)\nBy vehicle type"))
 ```
 
 
-### Sankey charts by vehicle type
+# Sankey charts by vehicle type
 
+Now we can return to the Sankey charts to see how the 3 different types of vehicle route, on their transit through Bath. The 'title' doesn't show up in notebook here, but does in the html, so that's ok!
+
+```{r sankey by type}
+#add the type to the sequences
+sseq_t <- sseq %>% 
+  left_join(veh %>% select(id, type) %>% distinct(), 
+            by= c("vehicle_id" = "id"))
+
+#plot Sankey
+trSankey(sseq_t %>% filter(type == "HCVs"), snode, 
+         minPct = 0.5,
+         fontSize = 20, title = "HCV routes between Swainswick (by-pass) and Bathampton (Dry Arch).")
+
+#plot Sankey
+trSankey(sseq_t %>% filter(type == "LCVs"), snode, 
+         minPct = 0.5,
+         fontSize = 20, title = "LCV routes between Swainswick (by-pass) and Bathampton (Dry Arch).")
+
+#plot Sankey
+trSankey(sseq_t %>% filter(type == "CARS"), snode, 
+         minPct = 0.5,
+         fontSize = 20, title = "Car routes between Swainswick (by-pass) and Bathampton (Dry Arch).")
+
+```
 

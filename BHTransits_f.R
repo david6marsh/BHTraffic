@@ -60,7 +60,8 @@ getVisitIDs <- function(sseq){
 trSankey <- function(seqs, 
                      nodes,
                      minPct = NA,
-                     fontSize = 12){
+                     fontSize = 12,
+                     title = ""){
   #get frequencies for link strength
   slink <- seqs %>% 
     ungroup() %>% 
@@ -74,16 +75,19 @@ trSankey <- function(seqs,
   slink <- slink %>% 
     filter(n >= total_n * minPct/100)}
 
-  sankeyNetwork(Links = slink, 
-                Nodes = nodes %>% 
-                  select(sloc, group1) %>% 
-                  distinct() %>% 
-                  arrange(sloc), 
-                Source = "prev_sid", Target = "sid",
-                Value = "n", units = "vehicles",
-                NodeID = "sloc", NodeGroup = "group1",
-                LinkGroup = "BSDirect",
-                fontSize = fontSize)
+  tagList(
+    tags$h3(title), 
+    sankeyNetwork(Links = slink, 
+                  Nodes = nodes %>% 
+                    select(sloc, group1) %>% 
+                    distinct() %>% 
+                    arrange(sloc), 
+                  Source = "prev_sid", Target = "sid",
+                  Value = "n", units = "vehicles",
+                  NodeID = "sloc", NodeGroup = "group1",
+                  LinkGroup = "BSDirect",
+                  fontSize = fontSize)
+  ) 
 }
 
 trChord <- function(x, ene = eneBase, max_time = 30,
