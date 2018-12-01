@@ -92,7 +92,7 @@ trChord <- function(x, ene = eneBase, max_time = 30,
   }
   circos.clear()  
   
-  return(cd)
+  return(transf)
 }
 
 

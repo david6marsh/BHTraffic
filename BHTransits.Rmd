@@ -1,14 +1,14 @@
 ---
-title: "BANES Traffic"
+title: "BANES Traffic - Transits"
 output: html_notebook
 ---
 
 
-## Introduction
+# Introduction
 
 This project explores data made available by [BathHacked and BANES Council](https://www.bathhacked.org) about traffic around Bath. The data are from automatic number plate readers (ANPRs). BathHacked have used the data to explore vehicle emissions in and around the city.
 
-My initial interest is the traffic entering the city along the Warminster Road.
+My initial interest is the traffic entering the city along the Warminster Road. This notebook looks at traffic transiting Bath (ie seen entering and leaving), with a particular highlight on the Warminster Road.
 
 ```{r initialise, warning=FALSE}
 library(dplyr)
@@ -25,9 +25,7 @@ source("BHTransits_f.R")
 ```
 
 
-# Bath Transits
-
-## Initial Data
+# Initial Data
 
 I've plotted the locations of the data using a Tableau workbook.
 
@@ -57,7 +55,7 @@ obs <- read.csv("Data/banes_anpr_data/observations.csv", stringsAsFactors = F,
   filter(time < as.POSIXct("2017-11-02 00:00:00.0", "%Y-%m-%d %H:%M:%S", tz="Europe/London"))
 ```
 
-##Transits only
+#Transits only
 
 We focus on those vehicles that are identified, and which transit the city in the sense of being observed to pass in through radial 1 and then out again within a time limit.
 
@@ -135,7 +133,7 @@ eneBase <- obs1t %>%
 ```
 
 
-### Basic Chord Diagram
+### Basic chord chart
 
 Using these valid transits, we generate some chord plots using `circlize`.
 
@@ -143,8 +141,8 @@ Using these valid transits, we generate some chord plots using `circlize`.
 
 
 # layout(matrix(1:2, 1, 2))
-z <- trChord(obs1t, eneBase, 30)
-title("Transits of Bath within 30 Minutes")
+z <- trChord(obs1t, eneBase, 45)
+title("Transits of Bath within 45 Minutes")
 # (z <- trChord(obs1t, eneBase, 60))
 # title("Transits of Bath within 60 Minutes")
 
@@ -363,7 +361,7 @@ addmargins(xtabs(~ sloc + prev_sloc, data = sseq))
 
 ```
 
-The little connections are distracting. So remove links with less than 0.5% of the total count. This is a lot cleaner. It also clarifies that we are not showing every visit here, because we are omitting those that leave by other routes. A quick what-if? including exits and entries to South and West shows what we saw in the chord diagram, that these are not a big source of traffic. Probably a bigger part of the remainder are those that go in and park and are not seen again (within the time sample taken).
+The little connections are distracting. So remove links with less than 0.5% of the total count. This is a lot cleaner. It also clarifies that we are not showing every visit here, because we are omitting those that leave by other routes. A quick what-if? including exits and entries to South and West shows what we saw in the chord chart, that these are not a big source of traffic. Probably a bigger part of the remainder are those that go in and park and are not seen again (within the time sample taken).
 
 ```{r Sankey main}
 
@@ -380,9 +378,9 @@ sankeyNetwork(Links = slink_main, Nodes = snode %>% select(sloc, group1) %>% dis
 
 ```
 
-** Types of Vehicle
+## Types of Vehicle
 
-This Sankey diagram shows the overall traffic patterns that I'm most interested in. There will be other flows across the toll bridge, such as locals from Bathampton or Batheaston who then aren't recorded by the ANPRs. Not much I can do about that for the moment.
+This Sankey diagram shows the overall traffic patterns, still for transits of Bath, that I'm most interested in. There will be other flows across the toll bridge, such as locals from Bathampton or Batheaston who then aren't recorded by the ANPRs. Not much I can do about that for the moment.
 
 The questions I'd like to tackle are when the vehicles travel, and what sort they are. Here we focus on the type of vehicle. I think the coding is 'TAXIS', 'SPVs' special purpose vehicles, "PSVs" public service vehicles, "LCVs" light commercial vehicles, "HCVs" heavy commercial vehicles, "2/3 Wheelers", and blank.
 
@@ -401,7 +399,9 @@ obs1t_v <- obs1t %>%
 
 ```
 
-So now we can do a variety of chord diagrams. Indeed, we can do one that shows all 3 main types together, as different colours.
+### Chord charts by vehicle type
+
+So now we can do a variety of chord charts. Indeed, we can do one that shows all 3 main types together, as different colours.
 
 ```{r vehicle type chords}
 min_t <- 45
@@ -420,6 +420,12 @@ title(paste0("Heavy commercial vehicle \ntransits of Bath (<= ",min_t," mins)"))
 
 z <- trChord(obs1t_v, eneBase, min_t, by_type=T, invisible_type = c())
 title(paste0("Vehicle transits of Bath (<= ",min_t," mins)\nBy vehicle type"))
+#some stats
+z <- z %>% 
+  #go bidirectional
+  mutate(route = paste(min(entry, exit), max(entry,exit), sep="<>"))
+#calculate some statistics
+addmargins(xtabs(n ~ route + type, data = z))
 
 #hiding cars
 z <- trChord(obs1t_v, eneBase, min_t, by_type=T, invisible_type = c("CARS"),
@@ -429,11 +435,6 @@ title(paste0("Vehicle transits of Bath (<= ",min_t," mins)\nBy vehicle type"))
 ```
 
 
-In theory it is possible to have multiple links per pair, with different colours. So the colours could be used to show the type of vehicle.
+### Sankey charts by vehicle type
 
-```{r multi-type chord diagram}
-
-
-
-```
 
