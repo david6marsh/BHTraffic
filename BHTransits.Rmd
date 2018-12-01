@@ -34,25 +34,13 @@ I've plotted the locations of the data using a Tableau workbook.
 The ANPRs consist of one in the far south-west (radial 4), an outer circle (radial 1) and inner circle (radial 2) and ANPRs near car parks (radial 3). Because of the focus on transiting traffic, I'm most interested in radial 1. I will group these into 5 clusters, as shown on the map: North (by-pass at Swainswick heading to and from the M4), Lansdown; East (Box Road to Chippenham, and Bathford); South (Brassnocker Hill, and 2 others); and West, towards Bristol.
 
 ```{r load data}
-anpr <- read.csv("Data/banes_anpr_data/sites.csv", stringsAsFactors = F) %>% 
-  mutate(group1 = case_when(
-    location_id %in% c(1,2) ~ "North",
-    location_id %in% c(3,4) ~ "East",
-    location_id == 5 ~ "Bathampton",
-    location_id %in% c(6,7,8) ~ "South",
-    location_id %in% c(9,10,11) ~ "West"
-                            ))
+anpr <- readANPRSites()
 
 r1 <- anpr %>% filter(radial_group == 1)
 r1_in <- r1 %>% filter(in_out == 1)
 r1_out <- r1 %>% filter(in_out == 2)
   
-obs <- read.csv("Data/banes_anpr_data/observations.csv", stringsAsFactors = F,
-                nrows = 700000) %>% 
-  #convert times, but ignore fractions of second 
-  mutate(time = as.POSIXct(t, "%Y-%m-%d %H:%M:%S", tz="Europe/London")) %>% 
-  select(-t) %>% 
-  filter(time < as.POSIXct("2017-11-02 00:00:00.0", "%Y-%m-%d %H:%M:%S", tz="Europe/London"))
+obs <- readANPRObs()
 ```
 
 #Transits only
@@ -60,8 +48,6 @@ obs <- read.csv("Data/banes_anpr_data/observations.csv", stringsAsFactors = F,
 We focus on those vehicles that are identified, and which transit the city in the sense of being observed to pass in through radial 1 and then out again within a time limit.
 
 ```{r possible city transits}
-
-
 #track carefully what data we are able to use
 n_full <- nrow(obs) #number of observations
 obsv <- obs %>% filter(vehicle_id != "")
@@ -100,7 +86,6 @@ The graph shows that in our sample of `r n_full` ANPR observations, we have `r n
 We look through the ins and outs for each vehicle, and label the individual transits: over several days vehicles may make a few - some vehicles make more than 10 per day (buses?). We filter down to valid transits, a pair starting with and in and ending with an out, and lasting less than a certain number of minutes.
 
 ```{r get valid transits}
-
 # test_veh <- obs1 %>% 
 #   sample_n(10000) %>% #first downsample
 #   select(vehicle_id) %>% 
@@ -128,18 +113,14 @@ eneBase <- obs1t %>%
          ttime = (last(time) - first(time))/60) %>% 
   select(-time) %>% 
   distinct() 
-
-
 ```
 
 
-### Basic chord chart
+## Basic chord chart
 
 Using these valid transits, we generate some chord plots using `circlize`.
 
 ```{r chord plot}
-
-
 # layout(matrix(1:2, 1, 2))
 z <- trChord(obs1t, eneBase, 45)
 title("Transits of Bath within 45 Minutes")
@@ -150,11 +131,11 @@ title("Transits of Bath within 45 Minutes")
 
 Stretching a transit to 60 minutes doesn't seem to make that much difference to the overall pattern.
 
-Next would be to do a split of these transits by vehicle type, or to look at peak hours.
+Next would be to do a split of these transits by vehicle type, or to look at peak hours, but that will come in a later section.
 
 ## Bathampton Traffic
 
-To put the transit traffic of 1,500-2,000 per day in context, we look in more detail at the overall traffic passing through Bathampton at Dry Arch. We see about `r 458/8756*100`% of vehicles are not identified. Probably a larger proportion are missed or unidentified at some ANPR as they pass through Bath, though the probability is unlikely to be 5% independently at each, since location, cleanliness of number plate, or being a foreign vehicle will be shared reasons for not being recognised. 
+To put the transit traffic of 1,500-2,000 per day in context, we look in more detail at the overall traffic passing through Bathampton at Dry Arch. We see about `r format(458/8756*100, digits=0)`% of vehicles are not identified. Probably a larger proportion are missed or unidentified at some ANPR as they pass through Bath, though the probability is unlikely to be 5% independently at each, since location, cleanliness of number plate, or being a foreign vehicle will be shared reasons for not being recognised. 
 
 ```{r Bathampton unknown vehicles}
 # Bathampton totals
@@ -182,21 +163,6 @@ in1 <- anpr %>%
 out1 <- anpr %>% 
   filter((radial_group == 1) & (in_out == 2)) %>% 
   select(id)
-
-# visit ID is like transitID, but based on site_ide not in-out
-getVisitIDs <- function(sseq){
-  #sseq is a vector of site_ids
-  # first visit with first site
-  #start a new visit at each in, or
-  # after each out, allowing that lag creates an NA at the start, so replace it with FALSE
-  vid <- data.frame(site = sseq) %>% 
-    mutate(rnum = 1:length(site),
-           entry = ifelse((rnum == 1)|(site %in% in1$id)|(na.omit(lag(site) %in% out1$id)), rnum, NA_integer_),
-           #rank the 1s and fill down
-           visit = dense_rank(entry)) %>% 
-    fill(visit)
-    return(vid$visit)
-}
 
 # test with a few vehicles
 test_veh <- obs %>%
@@ -294,9 +260,6 @@ ggplot(fnode,
                 alpha = 0.7,
                  arrow = arrow(length = unit(0.05, "npc"))) +
   scale_colour_hue(guide = 'none')
-
-
-
 ```
 
 Perhaps a Sankey diagram would be more effective? However, the ordering of the nodes is tricky. We could have 'entry' on the left and 'exit' on the right, but that potentially means needing links from London Road to Warminster Road, and vice versa. So we need to separate the two directions at each ANPR. And hope that there are no 'oddities' which remain difficult to encode. So start with a very simplified set of sequences: Bathampton, Swainswick with and without London Road.
@@ -341,44 +304,25 @@ sseq <- aseq %>%
            TRUE ~ "Other")) %>% 
   na.omit()
 
-#get frequencies for link strength
-slink <- sseq %>% 
-  ungroup() %>% 
-  select(sid, prev_sid, BSDirect) %>% 
-  group_by(sid, prev_sid, BSDirect) %>% 
-  summarise(n=n())
-
-sankeyNetwork(Links = slink, Nodes = snode %>% select(sloc, group1) %>% distinct() %>% arrange(sloc), 
-              Source = "prev_sid", Target = "sid",
-              Value = "n", units = "vehicles",
-              NodeID = "sloc", NodeGroup = "group1",
-              LinkGroup = "BSDirect",
-              fontSize = 12)
+#plot Sankey
+trSankey(sseq, snode)
 
 #calculate some statistics
 addmargins(xtabs(~ sloc + prev_sloc, data = sseq))
-
-
 ```
 
 The little connections are distracting. So remove links with less than 0.5% of the total count. This is a lot cleaner. It also clarifies that we are not showing every visit here, because we are omitting those that leave by other routes. A quick what-if? including exits and entries to South and West shows what we saw in the chord chart, that these are not a big source of traffic. Probably a bigger part of the remainder are those that go in and park and are not seen again (within the time sample taken).
 
 ```{r Sankey main}
 
-total_n <- sum(slink$n)
-slink_main <- slink %>% 
-  filter(n >= total_n * 0.005)
-
-sankeyNetwork(Links = slink_main, Nodes = snode %>% select(sloc, group1) %>% distinct() %>% arrange(sloc), 
-              Source = "prev_sid", Target = "sid",
-              Value = "n", units = "vehicles",
-              NodeID = "sloc", NodeGroup = "group1",
-              LinkGroup = "BSDirect",
-              fontSize = 20)
+#plot Sankey
+trSankey(sseq, snode, 
+         minPct = 0.5,
+         fontSize = 20)
 
 ```
 
-## Types of Vehicle
+# Types of Vehicle
 
 This Sankey diagram shows the overall traffic patterns, still for transits of Bath, that I'm most interested in. There will be other flows across the toll bridge, such as locals from Bathampton or Batheaston who then aren't recorded by the ANPRs. Not much I can do about that for the moment.
 
@@ -395,11 +339,9 @@ obs1t_v <- obs1t %>%
   left_join(veh %>% select(id, type) %>% distinct(), 
             by= c("vehicle_id" = "id"))
 
-
-
 ```
 
-### Chord charts by vehicle type
+## Chord charts by vehicle type
 
 So now we can do a variety of chord charts. Indeed, we can do one that shows all 3 main types together, as different colours.
 

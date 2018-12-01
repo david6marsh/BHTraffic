@@ -1,6 +1,31 @@
 #BHTransits
 # function definitions
 
+#read the site positions and group them
+readANPRSites <- function( siteFile = "Data/banes_anpr_data/sites.csv"){
+  read.csv(siteFile, stringsAsFactors = F) %>% 
+    mutate(group1 = case_when(
+      location_id %in% c(1,2) ~ "North",
+      location_id %in% c(3,4) ~ "East",
+      location_id == 5 ~ "Bathampton",
+      location_id %in% c(6,7,8) ~ "South",
+      location_id %in% c(9,10,11) ~ "West"
+    ))
+}
+
+#read observations from the ANPR readers
+#with a maximum of observations, and then filter to < beforeDate
+readANPRObs <- function(numobs = 700000,
+                        beforeDate = "2017-11-02",
+                        obsFile = "Data/banes_anpr_data/observations.csv"){
+  read.csv(obsFile, stringsAsFactors = F,
+           nrows = numobs) %>% 
+    #convert times, but ignore fractions of second 
+    mutate(time = as.POSIXct(t, "%Y-%m-%d %H:%M:%S", tz="Europe/London")) %>% 
+    select(-t) %>% 
+    filter(time < as.POSIXct(paste(beforeDate,"00:00:00.0"), "%Y-%m-%d %H:%M:%S", tz="Europe/London"))
+}
+
 getTransitIDs <- function(ioseq){
   #ioseq is a vector, a subset from obs1$in_out
   #start a new transit ID at each instance of a 1
@@ -15,6 +40,51 @@ getTransitIDs <- function(ioseq){
   #(in case of repeated 2s)
 }
 
+# visit ID is like transitID, but based on site_ide not in-out
+getVisitIDs <- function(sseq){
+  #sseq is a vector of site_ids
+  # first visit with first site
+  #start a new visit at each in, or
+  # after each out, allowing that lag creates an NA at the start, so replace it with FALSE
+  vid <- data.frame(site = sseq) %>% 
+    mutate(rnum = 1:length(site),
+           entry = ifelse((rnum == 1)|(site %in% in1$id)|(na.omit(lag(site) %in% out1$id)), rnum, NA_integer_),
+           #rank the 1s and fill down
+           visit = dense_rank(entry)) %>% 
+    fill(visit)
+  return(vid$visit)
+}
+
+#from a set of pairs and nodes calculate the frequencies and plot a Sankey
+#omit links with less than minPct share (5 converted to 5%)
+trSankey <- function(seqs, 
+                     nodes,
+                     minPct = NA,
+                     fontSize = 12){
+  #get frequencies for link strength
+  slink <- seqs %>% 
+    ungroup() %>% 
+    select(sid, prev_sid, BSDirect) %>% 
+    group_by(sid, prev_sid, BSDirect) %>% 
+    summarise(n=n())
+  
+  #filter if necessary to just the largest
+  total_n <- sum(slink$n)
+  if (!is.na(minPct)){
+  slink <- slink %>% 
+    filter(n >= total_n * minPct/100)}
+
+  sankeyNetwork(Links = slink, 
+                Nodes = nodes %>% 
+                  select(sloc, group1) %>% 
+                  distinct() %>% 
+                  arrange(sloc), 
+                Source = "prev_sid", Target = "sid",
+                Value = "n", units = "vehicles",
+                NodeID = "sloc", NodeGroup = "group1",
+                LinkGroup = "BSDirect",
+                fontSize = fontSize)
+}
 
 trChord <- function(x, ene = eneBase, max_time = 30,
                     by_type = FALSE,
