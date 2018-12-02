@@ -276,7 +276,7 @@ snode <- anpr %>%
              id %in% 3:4 ~ "Swainswick",
              id %in% 5:8 ~ "East",
              id %in% 9:10 ~ "Bathampton",
-             # id %in% 11:16 ~ "South",
+              # id %in% 11:22 ~ "South&West",
              # id %in% 17:22 ~ "West",
              id %in% 27:28 ~ "LondonRd",
              id %in% 29:30 ~ "Warm'rRd",
@@ -287,6 +287,8 @@ snode <- anpr %>%
          sloc = case_when(
            sloc %in% c("East_E","East_S") ~ "East_SE",
            sloc %in% c("East_N","East_W") ~ "East_NW",
+           # sloc %in% c("South&West_E","South&West_N") ~ "South&West_NE",
+           # sloc %in% c("South&West_S","South&West_W") ~ "South&West_SW",
            TRUE ~ sloc)) %>% 
   filter(loc != "Other") %>% 
   mutate(sid = dense_rank(sloc)-1)
@@ -302,6 +304,7 @@ sseq <- aseq %>%
          prev_sloc = lag(sloc),
          BSDirect = case_when(
            (prev_sloc=="Bathampton_W" & sloc=="Swainswick_N")|(sloc=="Bathampton_E" & prev_sloc=="Swainswick_S") ~ "Direct",
+           !(first(sloc) %in% c("Bathampton_W","Swainswick_S")) | !(last(sloc) %in% c("Bathampton_E","Swainswick_N")) ~ "Not A36-A46",
            (substr(prev_sloc,1,4)=="Lond")|(substr(sloc,1,4)=="Lond") ~ "London",
            TRUE ~ "Other")) %>% 
   na.omit()
@@ -323,6 +326,10 @@ trSankey(sseq, snode,
          fontSize = 20)
 
 ```
+
+Are we missing some cross-bridge traffic that are still transits? What if drivers coming from the South or West avoid London Road by going up Warminster Road then through Bathampton and over the toll bridge?
+
+Temporarily, I reinstated the South and West traffic, but found only 8 transits (out of 24,000) recorded at Swainswick heading South and then next at Warminster Rd heading West, and only 2 in the other direction. So a very small fraction paying to avoid London Road.
 
 # Types of Vehicle
 
@@ -403,6 +410,68 @@ trSankey(sseq_t %>% filter(type == "LCVs"), snode,
 trSankey(sseq_t %>% filter(type == "CARS"), snode, 
          minPct = 0.5,
          fontSize = 20, title = "Car routes between Swainswick (by-pass) and Bathampton (Dry Arch).")
+
+#plot Sankey
+trSankey(sseq_t %>% filter(!(type %in% c("CARS", "LCVs", "HCVs"))), snode, 
+         minPct = 0.5,
+         fontSize = 20, title = "Other vehicle routes between Swainswick (by-pass) and Bathampton (Dry Arch).")
+
+
+```
+
+After the surprise that around half of vehicles were already using the toll bridge, when split by vehicle type the results are less suprising: 
+* heavy commercial vehicles nearly all go via London Road (200/213 in one direction, for example, over 2 days)
+* light commercial vehicles going South-North are split 50:50, but going North-South the majority (311/530 = 59%) come over the toll bridge (or at least are not recorded at the ANPRs in London Rd, or Warminster Rd)
+* cars are also about 60:40 in favour of the toll bridge, again with a higher proportion when heading south.
+
+Other vehicles are also about 50:50. What are these vehicles? Even from a summary, it's not clear. There's a few 'Mercedes', but these could be un-classified or mis-classified cars, motorbikes, vans or lorries.
+
+```{r check other vehicles}
+
+other_types <- sseq_t %>% 
+  filter(!(type %in% c("CARS", "LCVs", "HCVs"))) %>% 
+  ungroup() %>% 
+  select(vehicle_id) %>% 
+  distinct() %>% 
+  left_join(veh, by = c("vehicle_id" = "id")) %>% 
+  select(make, type, subtype, fuel_type) %>% 
+  group_by(make, type, subtype, fuel_type) %>% 
+  summarise(n = n()) %>% 
+  arrange(-n)
+
+```
+
+Are the cars and vans using the toll bridge any younger or older than those that don't? The distributions (by emissions performance category) are pretty similar. There is perhaps a slightly higher proportion of E6 cars using the London Road route, but if you compare 'Direct' (~ toll bridge) and 'London Road + Other' then there's very little difference.
+
+Nor is there much sign of sensitivity to time of day.
+
+```{r age and type mix}
+car_van_age <- sseq_t %>% 
+  filter(type %in% c("CARS", "LCVs"),
+         BSDirect != "Not A36-A46") %>% 
+  ungroup() %>% 
+  select(vehicle_id, visit, BSDirect, time) %>% 
+  group_by(vehicle_id, visit) %>% 
+  #time will be entry time for visit
+  #BSDirect should be 'Direct', or 'London' if any are London, else 'Other'
+  summarise(time = min(time),
+            BSDirect = min(BSDirect)) %>% 
+  left_join(veh, by = c("vehicle_id" = "id"))  %>% 
+  mutate(EISY = as.integer(substr(intro_date, 1, 4)),
+         tbin = lubridate::round_date(time, "1 hour"),
+         ebin = if_else(
+           euro_status %in% c("E4", "E5", "E6"), euro_status, "Other"),
+         cbin = if_else((fuel_type=="PETROL" & euro_status %in% c("E4","E5","E6"))|(fuel_type=="DIESEL" & euro_status == "E6"),
+                        "Low", "High/Unknown"))
+
+ggplot(car_van_age, aes(x = euro_status)) +
+  geom_bar() +
+  facet_grid(BSDirect ~ type)
+
+ggplot(car_van_age, aes(x = tbin)) + geom_bar() +
+  facet_grid(cbin ~ BSDirect) + 
+  ggtitle("Cars & LCVs transiting Bath (A36-A46)", "By CAZ Emissions Level (Low = OK), Route and hour of day. 2-day sample.") +
+  labs(x = "Hour of Day", y= "Number of Vehicle-Visits")
 
 ```
 
