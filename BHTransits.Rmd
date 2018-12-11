@@ -298,19 +298,25 @@ sseq <- aseq %>%
   inner_join(snode %>% select(id, sloc, sid),
              by = c("site_id"="id")) %>% 
   group_by(vehicle_id, visit) %>% 
-  arrange(time) %>% 
+  arrange(vehicle_id, visit, time) %>% 
   # get pairs
   mutate(prev_sid = lag(sid),
          prev_sloc = lag(sloc),
+         # x = first(sloc),
+         # y = last(sloc),
          BSDirect = case_when(
+           !((first(sloc)=="Bathampton_W" & last(sloc) =="Swainswick_N")|(first(sloc)=="Swainswick_S" & last(sloc) =="Bathampton_E")) ~ "Not A36-A46",
            (prev_sloc=="Bathampton_W" & sloc=="Swainswick_N")|(sloc=="Bathampton_E" & prev_sloc=="Swainswick_S") ~ "Direct",
-           !(first(sloc) %in% c("Bathampton_W","Swainswick_S")) | !(last(sloc) %in% c("Bathampton_E","Swainswick_N")) ~ "Not A36-A46",
-           (substr(prev_sloc,1,4)=="Lond")|(substr(sloc,1,4)=="Lond") ~ "London",
+           (substr(prev_sloc,1,4)=="Lond")|(substr(sloc,1,4)=="Lond") ~ "LondonRd",
            TRUE ~ "Other")) %>% 
   na.omit()
 
-#plot Sankey
-trSankey(sseq, snode)
+#plot Sankey - all A36
+trSankey(sseq,
+         snode)
+#plot Sankey - only A36-A46
+trSankey(sseq %>% filter(BSDirect != "Not A36-A46"),
+         snode)
 
 #calculate some statistics
 addmargins(xtabs(~ sloc + prev_sloc, data = sseq))
@@ -322,6 +328,11 @@ The little connections are distracting. So remove links with less than 0.5% of t
 
 #plot Sankey
 trSankey(sseq, snode, 
+         minPct = 0.5,
+         fontSize = 20)
+
+trSankey(sseq %>% filter(BSDirect != "Not A36-A46"),
+         snode, 
          minPct = 0.5,
          fontSize = 20)
 
@@ -417,6 +428,10 @@ trSankey(sseq_t %>% filter(!(type %in% c("CARS", "LCVs", "HCVs"))), snode,
          fontSize = 20, title = "Other vehicle routes between Swainswick (by-pass) and Bathampton (Dry Arch).")
 
 
+trSankey(sseq_t %>% filter(BSDirect != "Not A36-A46"), snode, 
+         # minPct = 0.5,
+         fontSize = 20, title = "All vehicle types - routes on A36-A46 transits only..")
+
 ```
 
 After the surprise that around half of vehicles were already using the toll bridge, when split by vehicle type the results are less suprising: 
@@ -447,31 +462,84 @@ Nor is there much sign of sensitivity to time of day.
 
 ```{r age and type mix}
 car_van_age <- sseq_t %>% 
-  filter(type %in% c("CARS", "LCVs"),
+  filter(type %in% c("CARS", "LCVs", "HCVs"),
          BSDirect != "Not A36-A46") %>% 
   ungroup() %>% 
   select(vehicle_id, visit, BSDirect, time) %>% 
   group_by(vehicle_id, visit) %>% 
   #time will be entry time for visit
-  #BSDirect should be 'Direct', or 'London' if any are London, else 'Other'
+  #BSDirect should be 'Direct', or 'LondonRd' if any are London, else 'Other'
   summarise(time = min(time),
             BSDirect = min(BSDirect)) %>% 
   left_join(veh, by = c("vehicle_id" = "id"))  %>% 
-  mutate(EISY = as.integer(substr(intro_date, 1, 4)),
-         tbin = lubridate::round_date(time, "1 hour"),
+  mutate(tbin = lubridate::round_date(time, "1 hour"),
          ebin = if_else(
            euro_status %in% c("E4", "E5", "E6"), euro_status, "Other"),
-         cbin = if_else((fuel_type=="PETROL" & euro_status %in% c("E4","E5","E6"))|(fuel_type=="DIESEL" & euro_status == "E6"),
-                        "Low", "High/Unknown"))
+         cbin = case_when(
+           type == "HCVs" ~ type,
+           (fuel_type %in% c("PETROL", "PETROL/ELECTRIC") & euro_status %in% c("E4","E5","E6"))|(fuel_type %in% c("DIESEL","DIESEL/ELECTRIC") & euro_status == "E6")|(fuel_type == "ELECTRIC") ~ "Low",
+           TRUE ~ "High/Unknown"),
+         fuel = case_when(
+           grepl("ELEC", fuel_type) ~ "Elec or Hybrid",
+           TRUE ~ fuel_type),
+         direct = if_else(BSDirect == "Direct", "by Toll Bridge", "through Bath"),
+         year = max(2000, year(intro_date)))
 
 ggplot(car_van_age, aes(x = euro_status)) +
   geom_bar() +
   facet_grid(BSDirect ~ type)
 
-ggplot(car_van_age, aes(x = tbin)) + geom_bar() +
-  facet_grid(cbin ~ BSDirect) + 
-  ggtitle("Cars & LCVs transiting Bath (A36-A46)", "By CAZ Emissions Level (Low = OK), Route and hour of day. 2-day sample.") +
-  labs(x = "Hour of Day", y= "Number of Vehicle-Visits")
+ggplot(car_van_age, aes(x = tbin, fill = fuel)) + geom_bar() +
+  facet_grid(cbin ~ direct) + 
+  ggtitle("Cars, Light- & Heavy-Commercial Vehicles transiting Bath (A36 <-> A46)", "By CAZ Emissions Level (Low = OK), route and hour of day. 2-day sample.") +
+  labs(x = "Hour of Day", y= "Number of Transits") + 
+  scale_x_datetime(date_labels = "%d%b:%H") +
+  theme(legend.position = "bottom")
+
+#for totals, useful to do without cbin
+ggplot(car_van_age, aes(x = tbin, fill = fuel)) + geom_bar() +
+  facet_grid( ~ direct) + 
+  ggtitle("Cars, Light- & Heavy-Commercial Vehicles transiting Bath (A36 <-> A46)", "By route and hour of day. 2-day sample.") +
+  labs(x = "Hour of Day", y= "Number of Transits") + 
+  scale_x_datetime(date_labels = "%d%b:%H") +
+  theme(legend.position = "bottom")
+
+
+addmargins(xtabs( ~ cbin + direct, data = car_van_age))
+
+ggplot(car_van_age, aes(x = year, fill = fuel)) + geom_bar() +
+  facet_grid(cbin ~ direct) + 
+  ggtitle("Cars & LCVs transiting Bath (A36 <-> A46)", "By CAZ Emissions Level (Low = OK), route and year. 2-day sample.") +
+  labs(x = "On-the road year (or -2000)", y= "Number of Transits") +
+  theme(legend.position = "bottom")
+
 
 ```
+
+In our two-day sample, we have 4,703 vehicles in the Sankey chart, but only 4,589 in this bar chart. The remainder are odd/unclassified vehicles, see ealrier discussion.
+
+
+## Age - Is of vehicle type, not vehicle
+
+We are almost there, but need to look in a little more detail at the age profile. There is a 2015 peak which looks quite strange. Not clear if this is the date the car was put on the road, or the date that the car model was introduced. But the clumpiness of the dates looks like model introduction to me, rather than on-the-road, which I'd expect to be smoother.
+
+
+```{r age profile}
+ggplot(car_van_age, aes(x = year, fill = fuel)) + geom_bar() +
+  facet_wrap(~ type) +
+  ggtitle("Cars & LCVs transiting Bath (A36 <-> A46)", "2-day sample.") +
+  labs(x = "On-the road year (or -2000)", y= "Number of Transits") +
+  theme(legend.position = "bottom")
+
+ggplot(car_van_age %>% 
+         filter((make %in% c("NISSAN", "VAUXHALL", "BMW")) & year == 2015),
+       aes(x = intro_date, fill = make)) + geom_bar() +
+  ggtitle("Cars & LCVs transiting Bath (A36 <-> A46)", "2-day sample.") +
+  labs(x = "Intro Date", y= "Number of Transits") +
+  theme(legend.position = "bottom", axis.text.x=element_text(angle=90,hjust=1))
+
+
+```
+
+So we need to set age to one side, it appears we don't have any data to allow testing the retirement rates that have been applied.
 
