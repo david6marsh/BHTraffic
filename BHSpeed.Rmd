@@ -3,7 +3,7 @@ title: "A36 Speeds"
 output: html_notebook
 ---
 
-This is a quick look at the BANES/BathHacked data to assess speeds on the Warminster Road section, between the two ANPRs, one at Dry Arch on the entry to Bathampton, and the other on Warminster Rd. This is a distance of 1.53km along the road, according to the site positions published by BANES & BathHacked, and Google Maps.
+This is a quick look at the BANES/BathHacked data to assess speeds on the Warminster Road section, between the two ANPRs, one at Dry Arch on the entry to Bathampton, and the other on Warminster Rd. This is a distance of 1.53km along the road, according to the site positions published by BANES & BathHacked, and Google Maps. A short distance, about 100m?, is in a 40mph zone, the rest is 30mph.
 
 ![ANPR Distance](Images/ANPR Distance.png)
 
@@ -17,6 +17,8 @@ library(ggplot2)
 library(readxl)
 library(lubridate)
 library(purrr)
+library(yarrr)
+library(scales)
 
 source("BHTransits_f.R")
 
@@ -28,7 +30,7 @@ We need to load the data and look for sequences which are westbound (ids 10 then
 
 ```{r}
 #get some observations
-obs <- readANPRObs(numobs = 4e5) %>%
+obs <- readANPRObs() %>%
   #only identified vehicles
   filter(vehicle_id != "") %>% 
   #sequences
@@ -50,15 +52,16 @@ obs <- readANPRObs(numobs = 4e5) %>%
   mutate(
     mph = a_sep_M/as.numeric(ttime_hrs),
     #create a time bin
-    tbin = lubridate::round_date(time, "2 hours")) 
+    tbin = lubridate::round_date(time, "3 hours")) 
 
 
   
 ```
 
-Now we can try some visualisations of the data. Boxplots are easier for statisticians than others, maybe, to read. 
+Now we can try some visualisations of the data. Boxplots are easier for statisticians than others, maybe, to read. In a small sample, the median speed was 29.5mph and 25% were faster than 31mph.
 
 ```{r boxplots}
+summary(obs)
 
 ggplot(obs, aes(time, mph, group = tbin)) + geom_boxplot() +
   facet_wrap(~warm) +
@@ -69,14 +72,55 @@ ggplot(obs, aes(time, mph, group = tbin)) + geom_boxplot() +
 ```{r}
 library(yarrr) #for pirate plot
 #plot of speed
-pp <- pirateplot(formula = mph ~ tbin ,
+pp <- pirateplot(formula = mph ~ tbin,
     data = obs,
     avg.line.fun = median,
     ylab = 'Average Speed (mph)',
     xlab = "Direction",
     inf.method = 'iqr',
     theme = 2,
-    point.o = 0.2
+    point.o = 0.2, point.cex = 0.5
     ) 
+```
+
+CUrious to see if there are differences by vehicle type.
+
+```{r}
+veh <- read.csv("Data/banes_anpr_data/vehicles.csv", stringsAsFactors = F)  %>% 
+  select(id, type) %>% 
+  distinct()
+ 
+obs_v <- obs %>% 
+  left_join(veh, by= c("vehicle_id" = "id"))
+
+pp <- pirateplot(formula = mph ~ type,
+    data = obs_v,
+    avg.line.fun = median,
+    ylab = 'Average Speed (mph)',
+    xlab = "Vehicle Type",
+    inf.method = 'iqr',
+    theme = 2,
+    point.o = 0.2, point.cex = 0.5, 
+    ylim = c(5,55)
+    ) 
+
+```
+
+Flip the question around. At a given time of day, what proportion are doing more than 30?
+
+```{r likely to speed}
+speed_limit <- 30
+speeders <- obs_v %>% 
+  filter(type != "") %>% 
+  # mutate(hbin = lubridate::round_date(time, "1 hour")) %>% 
+  group_by(tbin, type) %>% 
+  summarise(n = n(),
+            speed_frac = sum(mph > speed_limit)/n)
+
+ggplot(speeders, aes(tbin, speed_frac, colour = type)) +
+  geom_line() +
+  labs(x = "Time", y = paste("Fraction going faster than",speed_limit, "mph")) +
+  scale_y_continuous(labels=scales::percent) 
+
 ```
 
