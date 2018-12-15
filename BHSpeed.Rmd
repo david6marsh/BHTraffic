@@ -30,7 +30,7 @@ We need to load the data and look for sequences which are westbound (ids 10 then
 
 ```{r}
 #get some observations
-obs <- readANPRObs() %>%
+obs <- readANPRObs(numobs = 1e6) %>%
   #only identified vehicles
   filter(vehicle_id != "") %>% 
   #sequences
@@ -52,7 +52,7 @@ obs <- readANPRObs() %>%
   mutate(
     mph = a_sep_M/as.numeric(ttime_hrs),
     #create a time bin
-    tbin = lubridate::round_date(time, "3 hours")) 
+    tbin = lubridate::floor_date(time, "3 hours")) 
 
 
   
@@ -110,17 +110,25 @@ Flip the question around. At a given time of day, what proportion are doing more
 
 ```{r likely to speed}
 speed_limit <- 30
+min_valid_speed <- 5
 speeders <- obs_v %>% 
   filter(type != "") %>% 
   # mutate(hbin = lubridate::round_date(time, "1 hour")) %>% 
   group_by(tbin, type) %>% 
   summarise(n = n(),
-            speed_frac = sum(mph > speed_limit)/n)
+            n_low = sum(mph < min_valid_speed),
+            n_hi = sum(mph > speed_limit),
+            speed_frac = n_hi/(n - n_low))
 
 ggplot(speeders, aes(tbin, speed_frac, colour = type)) +
   geom_line() +
   labs(x = "Time", y = paste("Fraction going faster than",speed_limit, "mph")) +
   scale_y_continuous(labels=scales::percent) 
+
+ggplot(speeders, aes(tbin, n_hi/(3), colour = type)) +
+  geom_line() +
+  labs(x = "Time (3-hours starting)", y = paste("Vehicles/Hour going faster than",speed_limit, "mph")) 
+
 
 ```
 
