@@ -21,16 +21,29 @@ library(yarrr)
 library(scales)
 
 source("BHTransits_f.R")
+sites <- read.csv("Data/banes_anpr_data/sites.csv") %>% 
+  #should be sorted, but just in case
+  arrange(id) %>% 
+  mutate(heading = case_when(
+    direction == "E" ~ "East",
+    direction == "S" ~ "South",
+    direction == "W" ~ "West",
+    direction == "N" ~ "North",
+    TRUE ~ "Unknown"))
 
 a_sep_km <- 1.53
 a_sep_M <- a_sep_km * 0.621371192
+
+speed_limit <- 30
+min_valid_speed <- 5 #mph
+
 ```
 
-We need to load the data and look for sequences which are westbound (ids 10 then 30), or eastbound (ids 29 then 9).
+We need to load the data and look for sequences which are westbound (ids 10 then 30), or eastbound (ids 29 then 9). A large number of data points here can end up with still less than 100k average speeds.
 
 ```{r}
 #get some observations
-obs <- readANPRObs(numobs = 1e6) %>%
+obs <- readANPRObs(numobs = -1, beforeDate = "2017-12-01") %>%
   #only identified vehicles
   filter(vehicle_id != "") %>% 
   #sequences
@@ -52,7 +65,8 @@ obs <- readANPRObs(numobs = 1e6) %>%
   mutate(
     mph = a_sep_M/as.numeric(ttime_hrs),
     #create a time bin
-    tbin = lubridate::floor_date(time, "3 hours")) 
+    tbin = lubridate::floor_date(time, "3 hours"),
+    dbin = lubridate::floor_date(time, "1 day")) 
 
 
   
@@ -62,12 +76,70 @@ Now we can try some visualisations of the data. Boxplots are easier for statisti
 
 ```{r boxplots}
 summary(obs)
+summary(obs %>% 
+          filter(mph >= min_valid_speed))
 
-ggplot(obs, aes(time, mph, group = tbin)) + geom_boxplot() +
+#plot by day
+ggplot(obs, aes(time, mph, group = dbin)) + geom_boxplot() +
   facet_wrap(~warm) +
-  labs(x = "Time", y="Speed (mph)")
+  labs(x = "Time", y="Speed (mph)") + 
+  scale_y_continuous(breaks=seq(0,60, by = 10))
+
+#zoom in on the 9 Nov dip
+ggplot(obs %>% 
+         filter(dbin < as.POSIXct("2017-11-11 00:00:00", "%Y-%m-%d %H:%M:%S", tz="Europe/London") &
+                  dbin >= as.POSIXct("2017-11-8 00:00:00", "%Y-%m-%d %H:%M:%S", tz="Europe/London")),
+       aes(time, mph, group = tbin)) + geom_boxplot() +
+  facet_wrap(~warm) +
+  labs(x = "Time (3-hour bin)", y="Speed (mph)") + 
+  scale_y_continuous(breaks=seq(0,60, by = 10))
+
 
 ```
+
+It looks as if there's a gap in the data around Nov 2, for both directions. Need to investigate this. Pull out a complete set of data, and then do stats by location. 
+
+There does seem to be a dip on November 1st for 29-30 sites (Warminster Rd). There are no readings from mid afternoon on the 1st to early morning on the 2nd. This might explain in the Sankey charts in the previous study why there were some vehicles that managed to get from London Road to Dry Arch without being recorded at Warminster Road. It only seems to be that location that is affected, out of the key locations for us: Swainswick, London Rd, Warminster Rd and Bathampton.
+
+Perhaps a bigger surprise is that there is only 2 weeks of data, where I was convinced that there were 4!
+
+```{r check sites are working}
+#get all observations
+w_obs <- readANPRObs(numobs = -1, beforeDate = "2017-12-01") %>%
+  #only identified vehicles
+  filter(site_id %in% c(3, 4, 9, 10, 27, 28, 29, 30)) %>% 
+  mutate(
+    dbin = lubridate::floor_date(time, "1 day"),
+    tbin = lubridate::floor_date(time, "1 hour")) 
+ 
+ggplot(w_obs, aes(dbin)) +
+  geom_bar() + 
+  facet_wrap(~site_id, ncol = 2, scales = "free_y" ) +
+  labs(x="Day", y = "Number of Vehicles")
+
+#summary of Bathampton data
+ggplot(w_obs %>% 
+         filter(site_id %in% c(9, 10, 29, 30)) %>% 
+         left_join(sites %>% select(id, description, heading), by = c("site_id" = "id")) %>% 
+         mutate(label = paste0(description, " ", heading, "bound"),
+                dotw = wday(dbin, label = T, abbr = T),
+                weekend = dotw %in% c("Sat", "Sun")),
+       aes(dbin, fill = weekend)) +
+  geom_bar() + 
+  facet_wrap(~label, ncol = 2) +
+  labs(x="Day", y = "Number of Vehicles")
+
+
+#zoom in on the problematic area
+ggplot(w_obs %>% filter(dbin < as.POSIXct("2017-11-03 00:00:00", "%Y-%m-%d %H:%M:%S", tz="Europe/London")),
+       aes(tbin)) +
+  geom_bar() + 
+  facet_wrap(~site_id, ncol = 2, scales = "free_y" ) +
+  labs(x="Time (1hr bins)", y = "Number of Vehicles")
+
+
+```
+
 
 ```{r}
 library(yarrr) #for pirate plot
@@ -91,7 +163,9 @@ veh <- read.csv("Data/banes_anpr_data/vehicles.csv", stringsAsFactors = F)  %>%
   distinct()
  
 obs_v <- obs %>% 
-  left_join(veh, by= c("vehicle_id" = "id"))
+  left_join(veh, by= c("vehicle_id" = "id")) %>% 
+  # almost no SPVs (1 per 2-3 days), so remove them. similarly 2/3 wheelers (2/day)
+  filter(!(type %in% c("SPVs", "2/3 Wheelers")))
 
 pp <- pirateplot(formula = mph ~ type,
     data = obs_v,
@@ -109,8 +183,6 @@ pp <- pirateplot(formula = mph ~ type,
 Flip the question around. At a given time of day, what proportion are doing more than 30?
 
 ```{r likely to speed}
-speed_limit <- 30
-min_valid_speed <- 5
 speeders <- obs_v %>% 
   filter(type != "") %>% 
   # mutate(hbin = lubridate::round_date(time, "1 hour")) %>% 
@@ -129,6 +201,18 @@ ggplot(speeders, aes(tbin, n_hi/(3), colour = type)) +
   geom_line() +
   labs(x = "Time (3-hours starting)", y = paste("Vehicles/Hour going faster than",speed_limit, "mph")) 
 
+ggplot(speeders, aes(tbin, n_hi/(3), fill = type)) +
+  geom_bar(stat = "identity") +
+  labs(x = "Time (3-hours starting)", y = paste("Vehicles/Hour going faster than",speed_limit, "mph")) 
 
 ```
+
+
+Are the fastest vehicles the emergency vehicles?
+
+```{r fastest vehicles}
+
+
+```
+
 
